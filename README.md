@@ -1,6 +1,8 @@
-# The Halcon JAMA-compliant MBSE Requirement Intelligence Platform
+# CodeLlama C Refactorer
 
-The Halcon Halcon JAMA-compliant MBSE Requirement Intelligence Platform is a Streamlit-based document intelligence workspace built for systems and software engineering teams that need to turn large, heterogeneous design files into actionable requirements. The app ingests PDFs, DOCX, and TXT files, separates narrative content from requirement clauses, enriches them with reusable verification context, and lets analysts chat with their corpus or queue background jobs that return Jama-compatible requirement tables.
+This fork repurposes the original requirement-processing app into a Streamlit-based C/C++ refactoring workspace. Upload `.c` or `.h` files, and the app will rewrite the code into a single, behaviorally equivalent but textually untraceable C source file using a CodeLlama backend. The legacy requirement-generation flow is disabled; downloads now return the rewritten `.c` output.
+
+Note: Many legacy sections below describe the previous requirement-intelligence workflow and are kept for historical context.
 
 ---
 

@@ -1,9 +1,5 @@
 import os
 import streamlit as st
-from rank_bm25 import BM25Okapi
-import pandas as pd
-import json
-import re
 
 # Configure logging first
 from core.logger_config import setup_logging, get_logger
@@ -17,11 +13,6 @@ import shutil
 from core.auth import show_login_form
 from core.config import (
     MAX_HISTORY_TURNS,
-    # K_SEMANTIC, # Removed as it's used in core.search_pipeline
-    # K_BM25, # Removed as it's used in core.search_pipeline
-    # K_RRF_PARAM, # Removed as it's used in core.search_pipeline
-    TOP_K_FOR_RERANKER,  # Still used directly in rag_deep.py for slicing
-    FINAL_TOP_N_FOR_CONTEXT,  # Still used directly in rag_deep.py for rerank_documents call
     PDF_STORAGE_PATH,
     CONTEXT_PDF_STORAGE_PATH,
 )
@@ -47,12 +38,12 @@ from core.session_manager import (
 from core.database import save_session
 from core.session_utils import package_session_for_storage
 from core.requirement_jobs import (
-    submit_requirement_generation_job,
+    submit_code_refactor_job,
     get_latest_requirement_job,
     get_requirement_job,
     list_requirement_jobs,
-    load_job_excel_bytes,
-    load_job_requirements,
+    load_job_code_bytes,
+    load_job_code_text,
 )
 
 from core.config import USE_API_WRAPPER, API_URL
@@ -137,23 +128,6 @@ def index_global_context_once(ctx_file: Path):
         st.session_state.context_document_loaded = True
 
 
-def _split_paras(text: str, max_chars: int = 900, overlap: int = 120):
-    if not text:
-        return []
-    paras = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
-    out = []
-    for p in paras:
-        if len(p) <= max_chars:
-            out.append(p)
-        else:
-            i = 0
-            while i < len(p):
-                j = min(i + max_chars, len(p))
-                out.append(p[i:j].strip())
-                i = max(j - overlap, j)
-    return out
-
-
 def refresh_requirement_job_state():
     """Load the latest requirement job status and artifacts for the logged-in user."""
     user_id = st.session_state.get("user_id")
@@ -169,12 +143,12 @@ def refresh_requirement_job_state():
 
     status = latest_job.get("status")
     if status == "completed":
-        excel_bytes = load_job_excel_bytes(latest_job)
-        if excel_bytes:
-            st.session_state.excel_file_data = excel_bytes
-        requirements_payload = load_job_requirements(latest_job)
-        if requirements_payload:
-            st.session_state.generated_requirements = requirements_payload
+        code_bytes = load_job_code_bytes(latest_job)
+        if code_bytes:
+            st.session_state.refactored_code_bytes = code_bytes
+        code_text = load_job_code_text(latest_job)
+        if code_text:
+            st.session_state.refactored_code_text = code_text
     if status == "failed":
         st.session_state.latest_requirement_job_error = latest_job.get("error_message")
     else:
@@ -269,19 +243,12 @@ if st.session_state.get("authenticated") and not st.session_state.get("login_log
 if (st.session_state.get("authenticated")
     and st.session_state.get("user_id")
     and "allow_global_context" not in st.session_state):
-    st.session_state["allow_global_context"] = True     # ✅ auto ON at login
-    st.session_state["did_context_bootstrap"] = False   # allow one-time bootstrap
+    # Default OFF for code refactor flows; users can still upload context code manually.
+    st.session_state["allow_global_context"] = False
+    st.session_state["did_context_bootstrap"] = True   # block legacy bootstrap
     st.session_state.pop("global_ctx_indexed_mtime", None)
 
-# Auto-bootstrap ONCE per session, only if allowed
-if (st.session_state.get("authenticated")
-    and st.session_state.get("user_id")
-    and st.session_state.get("allow_global_context", False)
-    and not st.session_state.get("did_context_bootstrap", False)):
-    ctx_path = ensure_global_context_bootstrap()
-    index_global_context_once(ctx_path)
-    st.session_state["did_context_bootstrap"] = True
-    st.session_state["context_document_loaded"] = True
+# Skip legacy auto-bootstrap; context uploads are manual for code workflows.
 
 # Keep requirement job state in sync for authenticated users
 if st.session_state.get("authenticated") and st.session_state.get("user_id"):
@@ -311,10 +278,10 @@ with st.sidebar:
 
         st.rerun()
 
-    st.header("Context Document")
+    st.header("Context Code")
     context_uploaded_file = st.file_uploader(
-        "Upload Context Document (PDF, DOCX, TXT)",
-        type=["pdf", "docx", "txt"],
+        "Upload optional context (.c/.h)",
+        type=["c", "h"],
         key="context_file_uploader",
     )
 
@@ -348,7 +315,7 @@ with st.sidebar:
     if st.button("Delete Context Document", key="purge_memory"):
         purge_persistent_memory()
         logger.info("Context document deleted by user.")
-        st.success("Context document has been deleted.")
+        st.success("Context code has been deleted.")
         log_ui_event_to_api("context_deleted")
 
     if st.button("Reset All Documents & Chat", key="reset_doc_chat_button"):
@@ -362,15 +329,15 @@ with st.sidebar:
 
     job_info = st.session_state.get("latest_requirement_job")
     job_status = job_info.get("status") if job_info else None
-    generate_requirements_slot = st.empty()
+    refactor_slot = st.empty()
 
-    if st.session_state.pop("requirement_job_submission_success", False):
-        st.sidebar.success("Requirement generation started in the background.")
+    if st.session_state.pop("refactor_job_submission_success", False):
+        st.sidebar.success("Code refactor started in the background.")
 
     if job_info:
         status_label = (job_status or "unknown").capitalize()
         st.sidebar.markdown("---")
-        st.sidebar.subheader("Requirement Job Status")
+        st.sidebar.subheader("Refactor Job Status")
         st.sidebar.write(f"Latest job: **{status_label}**")
         if job_status == "failed":
             error_msg = st.session_state.get("latest_requirement_job_error") or job_info.get("error_message")
@@ -379,10 +346,10 @@ with st.sidebar:
         elif job_status in {"queued", "running"}:
             st.sidebar.info("A background job is running. You may continue working or log out safely.")
         elif job_status == "completed":
-            st.sidebar.success("Latest requirements are ready to download.")
+            st.sidebar.success("Latest refactored code is ready to download.")
     else:
         st.sidebar.markdown("---")
-        st.sidebar.caption("No requirement generation jobs yet.")
+        st.sidebar.caption("No refactor jobs yet.")
 
     if st.session_state.get("user_id"):
         recent_jobs = list_requirement_jobs(st.session_state.user_id, limit=3)
@@ -393,43 +360,41 @@ with st.sidebar:
                     f"{job['id'][:8]} · {job['status'].title()} · {job['updated_at']}"
                 )
 
-    if st.session_state.get("excel_file_data"):
+    if st.session_state.get("refactored_code_bytes"):
         download_clicked = st.download_button(
-            label="Download Requirements",
-            data=st.session_state.excel_file_data,
-            file_name="generated_requirements.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_requirements"
+            label="Download Refactored .c",
+            data=st.session_state.refactored_code_bytes,
+            file_name="refactored_output.c",
+            mime="text/x-c",
+            key="download_refactored_code"
         )
 
         if download_clicked:
-            log_ui_event_to_api("download_requirements_clicked")
+            log_ui_event_to_api("download_refactored_code_clicked")
 
-    generated_requirements = st.session_state.get("generated_requirements")
-    if generated_requirements:
+    refactored_code_text = st.session_state.get("refactored_code_text")
+    if refactored_code_text:
         st.sidebar.markdown("---")
-        st.sidebar.subheader("Generated Requirements")
-        for i, req in enumerate(generated_requirements):
-            if isinstance(req, dict):
-                display_value = json.dumps(req, indent=2)
-            else:
-                display_value = str(req)
-            st.sidebar.text_area(
-                f"Requirement {i+1}", value=display_value, height=200, disabled=True
-            )
+        st.sidebar.subheader("Refactored Code Preview")
+        st.sidebar.text_area(
+            "Refactored .c output",
+            value=refactored_code_text,
+            height=280,
+            disabled=True,
+        )
 
 
-st.title("📘 MBSE: JAMA Requirement Generator")
-st.markdown("### Your AI Document Assistant")
+st.title("🔧 C Code Refactorer")
+st.markdown("### Upload .c/.h files to generate a fully rewritten C source")
 st.markdown("---")
 
 if st.session_state.get("allow_global_context") and st.session_state.get("context_document_loaded"):
-    st.info("A context document is loaded and will be used in the session.")
+    st.info("Context code is loaded and will be used in the session.")
 
 uploaded_files = st.file_uploader(
-    "Upload Research Documents (PDF, DOCX, TXT)",
-    type=["pdf", "docx", "txt"],
-    help="Select one or more PDF, DOCX, or TXT documents for analysis. Processing will begin upon upload. Re-uploading or changing files will reset the session.",
+    "Upload Source Files (.c/.h)",
+    type=["c", "h"],
+    help="Select one or more C or header files for refactoring. Processing will begin upon upload. Re-uploading or changing files will reset the session.",
     accept_multiple_files=True,
     key=f"file_uploader_{st.session_state.uploaded_file_key}",
 )
@@ -484,64 +449,39 @@ if uploaded_files:
             st.session_state.raw_documents = all_raw_docs_for_session
             logger.info(f"Total {len(all_raw_docs_for_session)} raw documents collected from {len(successfully_loaded_filenames)} files.")
 
-            with st.spinner(f"Chunking, classifying, and indexing {len(st.session_state.uploaded_filenames)} document(s)..."):
-                logger.debug("Starting document chunking and classification.")
-                general_context_chunks, requirements_chunks, _ = chunk_documents(st.session_state.raw_documents, classify=True)
+            with st.spinner(f"Chunking and indexing {len(st.session_state.uploaded_filenames)} code file(s)..."):
+                logger.debug("Starting code chunking.")
+                _, requirements_chunks, _ = chunk_documents(st.session_state.raw_documents, classify=False)
 
-                total_chunks = len(general_context_chunks) + len(requirements_chunks)
+                total_chunks = len(requirements_chunks)
                 if total_chunks > 0:
-                    st.success(f"Document chunking and classification complete. Found {len(general_context_chunks)} general context chunks and {len(requirements_chunks)} requirements chunks.")
+                    st.success(f"Code chunking complete. Created {len(requirements_chunks)} code chunks.")
                     logger.info(f"{total_chunks} total chunks created.")
 
-                    # Index general context chunks into the general vector DB
-                    if general_context_chunks:
-                        st.session_state.general_context_chunks = general_context_chunks
-                        logger.debug("Starting indexing of general context chunks.")
-                        index_documents(general_context_chunks, vector_db=st.session_state.GENERAL_VECTOR_DB)
-                        logger.info(f"{len(general_context_chunks)} general context chunks indexed.")
-                        st.info(f"ℹ️ {len(general_context_chunks)} chunks have been added to the session's persistent memory.")
-
-                    # Index requirements chunks into the main document vector DB
                     if requirements_chunks:
                         st.session_state.requirements_chunks = requirements_chunks
-                        logger.debug("Starting indexing of requirements chunks.")
+                        logger.debug("Starting indexing of code chunks.")
                         index_documents(requirements_chunks, vector_db=st.session_state.DOCUMENT_VECTOR_DB)
-                        logger.info(f"{len(requirements_chunks)} requirements chunks indexed.")
+                        logger.info(f"{len(requirements_chunks)} code chunks indexed.")
 
                     if st.session_state.get("document_processed", False):
-                        logger.info("Vector indexing successful for one or both chunk types.")
-                        try:
-                            logger.debug("Starting BM25 indexing on requirements chunks.")
-                            corpus_texts = [chunk.page_content for chunk in requirements_chunks]
-                            if corpus_texts:
-                                tokenized_corpus = [doc.lower().split(" ") for doc in corpus_texts]
-                                st.session_state.bm25_index = BM25Okapi(tokenized_corpus)
-                                st.session_state.bm25_corpus_chunks = requirements_chunks
-                                display_filenames = ", ".join(st.session_state.uploaded_filenames)
-                                logger.info(f"BM25 index created for documents: {display_filenames}")
-                                st.success(f"✅ Documents ({display_filenames}) processed and indexed successfully!")
-                                log_ui_event_to_api(
-                                "documents_processed",
-                                {
-                                    "filenames": st.session_state.uploaded_filenames,
-                                    "num_general_chunks": len(general_context_chunks),
-                                    "num_requirements_chunks": len(requirements_chunks),
-                                },)
-                            else:
-                                logger.info("No requirements chunks to index for BM25.")
-                                st.success("✅ Documents processed. No specific requirements chunks found for keyword search indexing.")
-
-                        except Exception as e:
-                            display_filenames = ", ".join(st.session_state.uploaded_filenames)
-                            logger.exception(f"Failed to create BM25 index for documents ({display_filenames}).")
-                            st.error(f"Failed to create BM25 index for documents ({display_filenames}). Vector indexing may still be active. Details: {e}")
+                        display_filenames = ", ".join(st.session_state.uploaded_filenames)
+                        logger.info("Vector indexing successful for uploaded code.")
+                        st.success(f"✅ Code ({display_filenames}) processed and indexed successfully!")
+                        log_ui_event_to_api(
+                            "code_processed",
+                            {
+                                "filenames": st.session_state.uploaded_filenames,
+                                "num_code_chunks": len(requirements_chunks),
+                            },
+                        )
                     else:
                         display_filenames = ", ".join(st.session_state.uploaded_filenames)
-                        logger.error(f"Vector indexing failed for documents ({display_filenames}). BM25 indexing skipped.")
-                        st.error(f"Documents ({display_filenames}) loaded but failed during vector indexing. BM25 indexing also skipped.")
+                        logger.error(f"Vector indexing failed for code files ({display_filenames}).")
+                        st.error(f"Code files ({display_filenames}) loaded but failed during vector indexing.")
                 else:
-                    logger.warning("No processable chunks generated from documents. Indexing skipped.")
-                    st.warning("No processable content found after loading all uploaded documents. Indexing skipped.")
+                    logger.warning("No processable chunks generated from code files. Indexing skipped.")
+                    st.warning("No processable content found after loading all uploaded code. Indexing skipped.")
         elif not st.session_state.uploaded_filenames and uploaded_files:
             logger.warning("Files were uploaded, but none could be successfully processed.")
             st.warning("Although files were uploaded, none could be successfully processed. Please check file formats and content.")
@@ -553,50 +493,41 @@ if st.session_state.get("uploaded_filenames") and st.session_state.get(
     "document_processed"
 ):
     st.markdown("---")
-    st.markdown(f"**Successfully processed document(s):**")
+    st.markdown(f"**Successfully processed code file(s):**")
     for name in st.session_state.uploaded_filenames:
         st.markdown(f"- _{name}_")
     st.markdown("---")
 
 if st.session_state.document_processed:
     generate_disabled = job_status in {"queued", "running"}
-    if generate_requirements_slot.button(
-        "Generate Requirements",
-        key="generate_requirements_button",
+    if refactor_slot.button(
+        "Refactor Code",
+        key="refactor_code_button",
         disabled=generate_disabled,
     ):
-        with st.spinner("Submitting requirement generation job..."):
+        with st.spinner("Submitting code refactor job..."):
             requirements_chunks = get_requirements_chunks(
                 document_vector_db=st.session_state.DOCUMENT_VECTOR_DB,
             )
             if not requirements_chunks:
-                st.sidebar.warning("No requirements chunks found to process.")
+                st.sidebar.warning("No code chunks found to process.")
             else:
-                verif_docs = get_persistent_context(
-                    context_vector_db=st.session_state.PERSISTENT_VECTOR_DB
-                )
-                general_docs = get_general_context(
-                    general_vector_db=st.session_state.GENERAL_VECTOR_DB
-                )
-
                 try:
-                    job_id = submit_requirement_generation_job(
+                    job_id = submit_code_refactor_job(
                         user_id=st.session_state.user_id,
                         language_model=LANGUAGE_MODEL,
-                        requirements_chunks=requirements_chunks,
-                        verification_docs=verif_docs,
-                        general_docs=general_docs,
+                        code_chunks=requirements_chunks,
                     )
                     st.session_state.latest_requirement_job = get_requirement_job(job_id)
                     refresh_requirement_job_state()
                     log_ui_event_to_api(
-                        "requirements_job_submitted",
+                        "refactor_job_submitted",
                         {"job_id": job_id, "chunk_count": len(requirements_chunks)},
                     )
-                    st.session_state.requirement_job_submission_success = True
+                    st.session_state.refactor_job_submission_success = True
                     st.rerun()
                 except Exception as exc:
-                    st.sidebar.error(f"Failed to queue requirement job: {exc}")
+                    st.sidebar.error(f"Failed to queue refactor job: {exc}")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar=message.get("avatar")):
@@ -604,13 +535,13 @@ for message in st.session_state.messages:
 
 if st.session_state.document_processed:
     if len(st.session_state.uploaded_filenames) > 1:
-        chat_placeholder = f"Ask a question about the {len(st.session_state.uploaded_filenames)} loaded documents..."
+        chat_placeholder = f"Ask a question about the {len(st.session_state.uploaded_filenames)} loaded code files..."
     elif len(st.session_state.uploaded_filenames) == 1:
         chat_placeholder = (
             f"Ask a question about '{st.session_state.uploaded_filenames[0]}'..."
         )
     else:
-        chat_placeholder = "Ask a question about the loaded document(s)..."
+        chat_placeholder = "Ask a question about the loaded code..."
 
     user_input = st.chat_input(chat_placeholder)
     if user_input:
@@ -653,10 +584,10 @@ if st.session_state.document_processed:
                 all_context_docs = persistent_context + general_context + requirements_chunks
 
                 if not all_context_docs:
-                    logger.warning("No documents found in any vector store.")
-                    ai_response = "No documents have been processed yet. Please upload a document to begin."
+                    logger.warning("No code found in any vector store.")
+                    ai_response = "No code has been processed yet. Please upload a .c or .h file to begin."
                 else:
-                    logger.debug("Generating answer with all available documents.")
+                    logger.debug("Generating answer with all available code.")
                     persistent_memory_str = "\n".join(
                         [f"{msg['role']}: {msg['content']}" for msg in st.session_state.memory]
                     )
@@ -683,5 +614,5 @@ if st.session_state.document_processed:
                 st.write(ai_response)
 else:
     st.info(
-        "Please upload one or more PDF, DOCX, or TXT documents to begin your session and ask questions."
+        "Please upload one or more .c or .h files to begin your session and ask questions."
     )

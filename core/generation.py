@@ -10,6 +10,7 @@ from .config import (
     SUMMARIZATION_PROMPT_TEMPLATE,
     KEYWORD_EXTRACTION_PROMPT_TEMPLATE,
     CHUNK_CLASSIFICATION_PROMPT_TEMPLATE,
+    CODE_REWRITE_PROMPT_TEMPLATE,
 )
 from .logger_config import get_logger
 
@@ -63,6 +64,38 @@ def generate_answer(
         user_message = "I'm sorry, but I encountered an error while trying to generate a response."
         logger.exception(f"Error during answer generation: {e}")
         return f"{user_message} Please try again later or rephrase your question. (Details: {e})"
+
+
+def generate_refactored_code(language_model, code_documents):
+    """
+    Rewrite the uploaded C/H files into a single, self-contained C source.
+    """
+    if not code_documents:
+        logger.warning("generate_refactored_code called with no code documents.")
+        return "No code was provided to refactor."
+
+    try:
+        bundle_parts = []
+        for doc in code_documents:
+            filename = doc.metadata.get("filename") or doc.metadata.get("source") or "code.c"
+            bundle_parts.append(f"// FILE: {filename}\n{doc.page_content}")
+        code_bundle = "\n\n".join(bundle_parts)
+        logger.debug(f"Code bundle length for refactor: {len(code_bundle)} characters.")
+
+        prompt = ChatPromptTemplate.from_template(CODE_REWRITE_PROMPT_TEMPLATE)
+        response_chain = prompt | language_model
+        response = response_chain.invoke({"code_bundle": code_bundle})
+
+        if not response or not response.strip():
+            logger.warning("AI model returned an empty response for code refactoring.")
+            return "The AI model returned an empty response while refactoring the code. Please try again."
+
+        logger.info("Refactored code generated successfully.")
+        return response
+    except Exception as e:
+        user_message = "Failed to refactor the uploaded code."
+        logger.exception(f"Error during code refactoring: {e}")
+        return f"{user_message} Please try again later. (Details: {e})"
 
 
 def generate_requirements_json(language_model, requirement_chunk, verification_methods_context: str = "", general_context: str = ""):

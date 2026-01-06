@@ -17,9 +17,9 @@ FINAL_TOP_N_FOR_CONTEXT = 15  # Number of docs reranker should return for LLM co
 
 # Prompt Templates
 GENERAL_QA_PROMPT_TEMPLATE = """
-You are an expert research assistant in Systems Engineering. Use the provided document context, conversation history, and persistent memory to answer the current query.
-If the query is a follow-up question, use the conversation history to understand the context.
-If unsure, state that you don't know. Be concise and factual.
+You are a senior C/C++ engineer. Use the provided code context, conversation history, and persistent memory to answer the current query about the uploaded codebase.
+- Keep answers concise, actionable, and grounded in the supplied code.
+- If the information is absent, clearly say you do not know and avoid inventing details.
 
 Persistent Memory (if any):
 {persistent_memory}
@@ -27,7 +27,7 @@ Persistent Memory (if any):
 Conversation History (if any):
 {conversation_history}
 
-Document Context:
+Code Context:
 {document_context}
 
 Current Query: {user_query}
@@ -168,18 +168,35 @@ Text Chunk:
 Classification:
 """
 
+CODE_REWRITE_PROMPT_TEMPLATE = """
+You are a senior C engineer. Rewrite the provided C/H sources into a single, self-contained C implementation that:
+- Preserves all observable behavior and interfaces.
+- Renames functions, variables, macros, and types to new, non-trivial names.
+- Reorders logic, restructures control flow, and rewrites comments so the result is not textually traceable to the inputs.
+- Removes unused code and clarifies unclear sections while keeping functionality intact.
+- Emits clean, compilable ANSI C (C11 or later) without Markdown, fences, or explanations.
+
+Source bundle (each file is delimited):
+{code_bundle}
+
+Return only the rewritten C source file content. Do not include headers, Markdown fences, or narrative text.
+"""
+
 # ========== Hard defaults (no env required) ==========
 # Models
-OLLAMA_EMBEDDING_MODEL_NAME = "mistral:7b"  
-OLLAMA_LLM_NAME             = "mistral:7b"
+OLLAMA_EMBEDDING_MODEL_NAME = "nomic-embed-text"  
+OLLAMA_LLM_NAME             = "codellama:13b"
 RERANKER_MODEL_NAME         = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 # Storage
-BASE_STORE               = Path("./document_store")
-PDF_STORAGE_PATH         = str(BASE_STORE / "pdfs")
-CONTEXT_PDF_STORAGE_PATH = str(BASE_STORE / "context_pdfs")
-MEMORY_FILE_PATH         = str(BASE_STORE / "memory" / "context.json")
-REQUIREMENTS_OUTPUT_PATH = str(BASE_STORE / "generated_requirements")
+BASE_STORE                  = Path("./document_store")
+CODE_STORAGE_PATH           = str(BASE_STORE / "code_inputs")
+CONTEXT_CODE_STORAGE_PATH   = str(BASE_STORE / "context_code")
+PDF_STORAGE_PATH            = CODE_STORAGE_PATH  # Backward compatibility
+CONTEXT_PDF_STORAGE_PATH    = CONTEXT_CODE_STORAGE_PATH
+MEMORY_FILE_PATH            = str(BASE_STORE / "memory" / "context.json")
+REQUIREMENTS_OUTPUT_PATH    = str(BASE_STORE / "generated_requirements")  # legacy name
+CODE_OUTPUT_PATH            = str(BASE_STORE / "refactored_code")
 
 # Endpoints (local single-device defaults)
 # OLLAMA_BASE_URL is what the API wrapper uses to reach Ollama.
@@ -220,5 +237,11 @@ API_URL    = _normalize_url(RAG_API_BASE,    8000)
 POSTMAN_PROXY = os.getenv("POSTMAN_PROXY") 
 
 # Ensure directories exist
-for p in (PDF_STORAGE_PATH, CONTEXT_PDF_STORAGE_PATH, Path(MEMORY_FILE_PATH).parent, REQUIREMENTS_OUTPUT_PATH):
+for p in (
+    PDF_STORAGE_PATH,
+    CONTEXT_PDF_STORAGE_PATH,
+    Path(MEMORY_FILE_PATH).parent,
+    REQUIREMENTS_OUTPUT_PATH,
+    CODE_OUTPUT_PATH,
+):
     Path(p).mkdir(parents=True, exist_ok=True)
