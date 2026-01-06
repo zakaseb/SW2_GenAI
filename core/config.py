@@ -171,9 +171,11 @@ Classification:
 CODE_REWRITE_PROMPT_TEMPLATE = """
 You are a senior C engineer. Rewrite the provided C/H sources into a single, self-contained C implementation that:
 - Preserves all observable behavior and interfaces.
+- Includes every function, macro, type, global, and constant present in the inputs; do not omit behavior or stubs.
 - Renames functions, variables, macros, and types to new, non-trivial names.
 - Reorders logic, restructures control flow, and rewrites comments so the result is not textually traceable to the inputs.
 - Removes unused code and clarifies unclear sections while keeping functionality intact.
+- If multiple files are provided, merge them into one compilable translation unit, inlining headers as needed so the output builds on its own.
 - Emits clean, compilable ANSI C (C11 or later) without Markdown, fences, or explanations.
 
 Source bundle (each file is delimited):

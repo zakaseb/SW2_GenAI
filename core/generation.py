@@ -69,6 +69,7 @@ def generate_answer(
 def generate_refactored_code(language_model, code_documents):
     """
     Rewrite the uploaded C/H files into a single, self-contained C source.
+    The full, original documents are provided so no content is lost.
     """
     if not code_documents:
         logger.warning("generate_refactored_code called with no code documents.")

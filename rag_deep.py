@@ -498,7 +498,7 @@ if st.session_state.get("uploaded_filenames") and st.session_state.get(
         st.markdown(f"- _{name}_")
     st.markdown("---")
 
-if st.session_state.document_processed:
+    if st.session_state.document_processed:
     generate_disabled = job_status in {"queued", "running"}
     if refactor_slot.button(
         "Refactor Code",
@@ -506,23 +506,26 @@ if st.session_state.document_processed:
         disabled=generate_disabled,
     ):
         with st.spinner("Submitting code refactor job..."):
-            requirements_chunks = get_requirements_chunks(
-                document_vector_db=st.session_state.DOCUMENT_VECTOR_DB,
-            )
-            if not requirements_chunks:
-                st.sidebar.warning("No code chunks found to process.")
+                # Prefer full original documents to ensure complete rewrite; fall back to chunks.
+                code_documents = st.session_state.get("raw_documents") or []
+                if not code_documents:
+                    code_documents = get_requirements_chunks(
+                        document_vector_db=st.session_state.DOCUMENT_VECTOR_DB,
+                    )
+                if not code_documents:
+                    st.sidebar.warning("No code found to process.")
             else:
                 try:
                     job_id = submit_code_refactor_job(
                         user_id=st.session_state.user_id,
                         language_model=LANGUAGE_MODEL,
-                        code_chunks=requirements_chunks,
+                            code_documents=code_documents,
                     )
                     st.session_state.latest_requirement_job = get_requirement_job(job_id)
                     refresh_requirement_job_state()
                     log_ui_event_to_api(
                         "refactor_job_submitted",
-                        {"job_id": job_id, "chunk_count": len(requirements_chunks)},
+                            {"job_id": job_id, "doc_count": len(code_documents)},
                     )
                     st.session_state.refactor_job_submission_success = True
                     st.rerun()

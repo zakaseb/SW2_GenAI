@@ -43,11 +43,11 @@ class CodeRefactorJobManager:
         *,
         user_id: int,
         language_model,
-        code_chunks: List[Any],
+        code_documents: List[Any],
     ) -> str:
         job_id = str(uuid.uuid4())
         metadata = {
-            "code_chunk_count": len(code_chunks or []),
+            "code_document_count": len(code_documents or []),
         }
         create_requirement_job(job_id, user_id, status="queued", metadata=metadata)
         logger.info("Queued code refactor job %s for user %s", job_id, user_id)
@@ -57,7 +57,7 @@ class CodeRefactorJobManager:
             job_id,
             user_id,
             language_model,
-            code_chunks or [],
+            code_documents or [],
         )
         self._active_jobs[job_id] = future
         future.add_done_callback(lambda _: self._active_jobs.pop(job_id, None))
@@ -68,13 +68,13 @@ class CodeRefactorJobManager:
         job_id: str,
         user_id: int,
         language_model,
-        code_chunks: List[Any],
+        code_documents: List[Any],
     ) -> None:
         logger.info("Starting code refactor job %s", job_id)
         update_requirement_job(job_id, status="running")
         try:
             usable_chunks = [
-                chunk for chunk in code_chunks if getattr(chunk, "page_content", "").strip()
+                chunk for chunk in code_documents if getattr(chunk, "page_content", "").strip()
             ]
             if not usable_chunks:
                 raise ValueError("No usable code content found to refactor.")
