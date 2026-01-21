@@ -123,7 +123,7 @@ def generate_refactored_code(language_model, code_documents):
     """
     if not code_documents:
         logger.warning("generate_refactored_code called with no code documents.")
-        return "No code was provided to refactor."
+        raise ValueError("No code was provided to refactor.")
 
     try:
         bundle_parts = []
@@ -139,7 +139,7 @@ def generate_refactored_code(language_model, code_documents):
 
         if not response or not response.strip():
             logger.warning("AI model returned an empty response for code refactoring.")
-            return "The AI model returned an empty response while refactoring the code. Please try again."
+            raise ValueError("AI model returned an empty response while refactoring the code.")
 
         logger.info("Refactored code generated successfully.")
         cleaned, meta = _sanitize_refactored_output(response)
@@ -170,9 +170,8 @@ def generate_refactored_code(language_model, code_documents):
 
         return cleaned
     except Exception as e:
-        user_message = "Failed to refactor the uploaded code."
         logger.exception(f"Error during code refactoring: {e}")
-        return f"{user_message} Please try again later. (Details: {e})"
+        raise
 
 
 def generate_requirements_json(language_model, requirement_chunk, verification_methods_context: str = "", general_context: str = ""):
