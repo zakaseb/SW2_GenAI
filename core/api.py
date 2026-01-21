@@ -26,7 +26,7 @@ app = FastAPI(title="LLM Wrapper", version="0.1")
 
 class GenerateReq(BaseModel):
     prompt: str
-    model: str = "mistral:7b"
+    model: str = "wizardcoder:latest"
     temperature: float = 0.2
     max_tokens: Optional[int] = None
 
@@ -38,7 +38,7 @@ class GenerateResp(BaseModel):
 
 class EmbedReq(BaseModel):
     texts: List[str]
-    model: str = "mistral:7b"
+    model: str = "nomic-embed-text"
 
 
 class EmbedResp(BaseModel):
@@ -219,7 +219,7 @@ async def generate(body: GenerateReq):
 @app.get("/generate")
 async def generate_get(
     prompt: Optional[str] = Query(default=None),
-    model: str = "mistral:7b",
+    model: str = "wizardcoder:latest",
     temperature: float = 0.2,
     max_tokens: Optional[int] = None,
 ):
@@ -290,7 +290,7 @@ async def embed(body: EmbedReq):
 @app.get("/embed")
 async def embed_get(
     texts: Optional[List[str]] = Query(default=None),
-    model: str = "mistral:7b",
+    model: str = "nomic-embed-text",
 ):
     """
     - GET /embed                            -> info stub

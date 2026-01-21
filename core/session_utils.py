@@ -9,7 +9,6 @@ PERSISTENT_KEYS = [
     "raw_documents",
     "uploaded_filenames",
     "processed_files_info",
-    "generated_requirements",
     "document_processed",
     "bm25_index",
     "bm25_corpus_chunks",
@@ -18,7 +17,8 @@ PERSISTENT_KEYS = [
     "processed_context_file_info",
     "context_document_loaded",
     "context_chunks",
-    "excel_file_data"
+    "refactored_code_text",
+    "refactored_code_bytes",
 ]
 
 def package_session_for_storage():

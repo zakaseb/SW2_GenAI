@@ -103,12 +103,14 @@ def initialize_session_state():
         st.session_state.processed_files_info = {}
     if "processed_context_file_info" not in st.session_state:
         st.session_state.processed_context_file_info = None
-    if "document_summary" not in st.session_state:
-        st.session_state.document_summary = None
     if "bm25_index" not in st.session_state:
         st.session_state.bm25_index = None
     if "bm25_corpus_chunks" not in st.session_state:
         st.session_state.bm25_corpus_chunks = []
+    if "refactored_code_text" not in st.session_state:
+        st.session_state.refactored_code_text = None
+    if "refactored_code_bytes" not in st.session_state:
+        st.session_state.refactored_code_bytes = None
 
 
 def reset_document_states(clear_chat=True):
@@ -126,9 +128,8 @@ def reset_document_states(clear_chat=True):
     st.session_state.raw_documents = []
 
     # Reset generated content
-    st.session_state.document_summary = None
-    st.session_state.generated_requirements = None
-    st.session_state.excel_file_data = None
+    st.session_state.refactored_code_text = None
+    st.session_state.refactored_code_bytes = None
 
     # Reset chunks and search indices
     st.session_state.general_context_chunks = []
