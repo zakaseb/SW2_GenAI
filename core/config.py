@@ -184,10 +184,38 @@ Source bundle (each file is delimited):
 Return only the rewritten C source file content. Do not include headers, Markdown fences, or narrative text.
 """
 
+CODE_REWRITE_RETRY_PROMPT_TEMPLATE = """
+Your previous output was incomplete or included extra text. Rewrite the provided C/H sources into a single, self-contained C implementation that:
+- Preserves all observable behavior and interfaces.
+- Includes every function, macro, type, global, and constant present in the inputs; do not omit behavior or stubs.
+- Produces a complete implementation at least as comprehensive as the original input.
+- Emits clean, compilable ANSI C (C11 or later) without Markdown, fences, or explanations.
+
+Source bundle (each file is delimited):
+{code_bundle}
+
+Previous output (for reference only; do not repeat prefixes/suffixes):
+{previous_output}
+
+Return only the rewritten C source file content.
+"""
+
+CODE_REWRITE_FILE_PROMPT_TEMPLATE = """
+You are a senior C engineer. Rewrite the provided C or header file while preserving all behavior and public interfaces.
+- Include every function, macro, type, global, and constant present in the input.
+- Rename identifiers and rewrite comments so the result is not textually traceable.
+- Emit clean, compilable ANSI C (C11 or later) without Markdown, fences, or explanations.
+
+Source file:
+{code_text}
+
+Return only the rewritten file content.
+"""
+
 # ========== Hard defaults (no env required) ==========
 # Models
 OLLAMA_EMBEDDING_MODEL_NAME = "nomic-embed-text"  
-OLLAMA_LLM_NAME             = "codellama:13b"
+OLLAMA_LLM_NAME             = "wizardcoder:latest"
 RERANKER_MODEL_NAME         = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 # Storage

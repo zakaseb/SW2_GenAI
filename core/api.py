@@ -26,7 +26,7 @@ app = FastAPI(title="LLM Wrapper", version="0.1")
 
 class GenerateReq(BaseModel):
     prompt: str
-    model: str = "codellama:13b"
+    model: str = "wizardcoder:latest"
     temperature: float = 0.2
     max_tokens: Optional[int] = None
 
@@ -219,7 +219,7 @@ async def generate(body: GenerateReq):
 @app.get("/generate")
 async def generate_get(
     prompt: Optional[str] = Query(default=None),
-    model: str = "codellama:13b",
+    model: str = "wizardcoder:latest",
     temperature: float = 0.2,
     max_tokens: Optional[int] = None,
 ):
