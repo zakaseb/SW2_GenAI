@@ -74,21 +74,6 @@ class CodeRefactorJobManager:
     ) -> None:
         logger.info("Starting code refactor job %s", job_id)
         update_requirement_job(job_id, status="running")
-        # #region agent log
-        try:
-            with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                _f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "pre-fix",
-                    "hypothesisId": "H1",
-                    "location": "core/requirement_jobs.py:_execute_job:start",
-                    "message": "Starting refactor job",
-                    "data": {"job_id": job_id, "doc_count": len(code_documents)},
-                    "timestamp": int(time.time() * 1000),
-                }) + "\n")
-        except Exception:
-            pass
-        # #endregion
         try:
             usable_chunks = [
                 chunk for chunk in code_documents if getattr(chunk, "page_content", "").strip()
@@ -121,38 +106,8 @@ class CodeRefactorJobManager:
                 metadata=metadata,
             )
             logger.info("Code refactor job %s completed.", job_id)
-            # #region agent log
-            try:
-                with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "pre-fix",
-                        "hypothesisId": "H3",
-                        "location": "core/requirement_jobs.py:_execute_job:completed",
-                        "message": "Refactor job completed",
-                        "data": {"job_id": job_id, "output_chars": len(refactored_source)},
-                        "timestamp": int(time.time() * 1000),
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
         except Exception as exc:
             logger.exception("Code refactor job %s failed: %s", job_id, exc)
-            # #region agent log
-            try:
-                with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "pre-fix",
-                        "hypothesisId": "H4",
-                        "location": "core/requirement_jobs.py:_execute_job:error",
-                        "message": "Refactor job failed",
-                        "data": {"job_id": job_id, "error": str(exc)},
-                        "timestamp": int(time.time() * 1000),
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
             update_requirement_job(job_id, status="failed", error_message=str(exc))
 
 

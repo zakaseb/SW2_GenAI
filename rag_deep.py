@@ -517,25 +517,6 @@ if st.session_state.get("uploaded_filenames") and st.session_state.get(
                 if not code_documents:
                     st.sidebar.warning("No code found to process.")
                 else:
-                    # #region agent log
-                    try:
-                        with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                            _f.write(json.dumps({
-                                "sessionId": "debug-session",
-                                "runId": "pre-fix",
-                                "hypothesisId": "H1",
-                                "location": "rag_deep.py:refactor_click_start",
-                                "message": "Submitting refactor job",
-                                "data": {
-                                    "doc_count": len(code_documents),
-                                    "user_id": st.session_state.get("user_id"),
-                                    "job_status": job_status,
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }) + "\n")
-                    except Exception:
-                        pass
-                    # #endregion
                     try:
                         job_id = submit_code_refactor_job(
                             user_id=st.session_state.user_id,
@@ -549,38 +530,8 @@ if st.session_state.get("uploaded_filenames") and st.session_state.get(
                             {"job_id": job_id, "doc_count": len(code_documents)},
                         )
                         st.session_state.refactor_job_submission_success = True
-                        # #region agent log
-                        try:
-                            with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                                _f.write(json.dumps({
-                                    "sessionId": "debug-session",
-                                    "runId": "pre-fix",
-                                    "hypothesisId": "H1",
-                                    "location": "rag_deep.py:refactor_submit_success",
-                                    "message": "Refactor job queued",
-                                    "data": {"job_id": job_id, "doc_count": len(code_documents)},
-                                    "timestamp": int(time.time() * 1000),
-                                }) + "\n")
-                        except Exception:
-                            pass
-                        # #endregion
                         st.rerun()
                     except Exception as exc:
-                        # #region agent log
-                        try:
-                            with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                                _f.write(json.dumps({
-                                    "sessionId": "debug-session",
-                                    "runId": "pre-fix",
-                                    "hypothesisId": "H2",
-                                    "location": "rag_deep.py:refactor_submit_error",
-                                    "message": "Failed to queue refactor job",
-                                    "data": {"error": str(exc)},
-                                    "timestamp": int(time.time() * 1000),
-                                }) + "\n")
-                        except Exception:
-                            pass
-                        # #endregion
                         st.sidebar.error(f"Failed to queue refactor job: {exc}")
 
 for message in st.session_state.messages:

@@ -64,26 +64,6 @@ def _rewrite_single_document(language_model, code_text: str, filename: str):
     chain = prompt | language_model
     response = chain.invoke({"code_text": code_text})
     cleaned, meta = _sanitize_refactored_output(response or "")
-    # #region agent log
-    try:
-        with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "post-fix",
-                "hypothesisId": "H5",
-                "location": "core/generation.py:_rewrite_single_document",
-                "message": "Per-file refactor result",
-                "data": {
-                    "filename": filename,
-                    "input_chars": len(code_text),
-                    "output_chars": len(cleaned),
-                    **meta,
-                },
-                "timestamp": int(time.time() * 1000),
-            }) + "\n")
-    except Exception:
-        pass
-    # #endregion
     return cleaned
 
 
@@ -152,24 +132,6 @@ def generate_refactored_code(language_model, code_documents):
             bundle_parts.append(f"// FILE: {filename}\n{doc.page_content}")
         code_bundle = "\n\n".join(bundle_parts)
         logger.debug(f"Code bundle length for refactor: {len(code_bundle)} characters.")
-        # #region agent log
-        try:
-            with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                _f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "pre-fix",
-                    "hypothesisId": "H1",
-                    "location": "core/generation.py:generate_refactored_code:bundle",
-                    "message": "Prepared code bundle",
-                    "data": {
-                        "doc_count": len(code_documents),
-                        "bundle_chars": len(code_bundle),
-                    },
-                    "timestamp": int(time.time() * 1000),
-                }) + "\n")
-        except Exception:
-            pass
-        # #endregion
 
         prompt = ChatPromptTemplate.from_template(CODE_REWRITE_PROMPT_TEMPLATE)
         response_chain = prompt | language_model
@@ -180,48 +142,7 @@ def generate_refactored_code(language_model, code_documents):
             return "The AI model returned an empty response while refactoring the code. Please try again."
 
         logger.info("Refactored code generated successfully.")
-        # #region agent log
-        try:
-            has_fence = "```" in response
-            prefix_preview = response[:120]
-            suffix_preview = response[-120:] if len(response) > 120 else response
-            with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                _f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "pre-fix",
-                    "hypothesisId": "H2",
-                    "location": "core/generation.py:generate_refactored_code:response",
-                    "message": "LLM response received",
-                    "data": {
-                        "response_chars": len(response),
-                        "has_fence": has_fence,
-                        "prefix_preview": prefix_preview,
-                        "suffix_preview": suffix_preview,
-                    },
-                    "timestamp": int(time.time() * 1000),
-                }) + "\n")
-        except Exception:
-            pass
-        # #endregion
         cleaned, meta = _sanitize_refactored_output(response)
-        # #region agent log
-        try:
-            with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                _f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "post-fix",
-                    "hypothesisId": "H3",
-                    "location": "core/generation.py:generate_refactored_code:sanitize",
-                    "message": "Sanitized refactor output",
-                    "data": {
-                        "cleaned_chars": len(cleaned),
-                        **meta,
-                    },
-                    "timestamp": int(time.time() * 1000),
-                }) + "\n")
-        except Exception:
-            pass
-        # #endregion
         input_chars = len(code_bundle)
         if len(cleaned) < int(input_chars * 0.85):
             retry_prompt = ChatPromptTemplate.from_template(CODE_REWRITE_RETRY_PROMPT_TEMPLATE)
@@ -230,24 +151,6 @@ def generate_refactored_code(language_model, code_documents):
                 {"code_bundle": code_bundle, "previous_output": response}
             )
             retry_cleaned, retry_meta = _sanitize_refactored_output(retry_response or "")
-            # #region agent log
-            try:
-                with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "post-fix",
-                        "hypothesisId": "H4",
-                        "location": "core/generation.py:generate_refactored_code:retry",
-                        "message": "Retry refactor output",
-                        "data": {
-                            "retry_chars": len(retry_cleaned),
-                            **retry_meta,
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
             if retry_cleaned and len(retry_cleaned) >= len(cleaned):
                 cleaned = retry_cleaned
 
@@ -262,24 +165,6 @@ def generate_refactored_code(language_model, code_documents):
                 filename = doc.metadata.get("filename") or doc.metadata.get("source") or "code.c"
                 per_file_outputs.append(_rewrite_single_document(language_model, code_text, filename))
             per_file_cleaned = "\n\n".join([o for o in per_file_outputs if o.strip()])
-            # #region agent log
-            try:
-                with open("/home/precision7780/PycharmProjects/SW2_GenAI/.cursor/debug.log", "a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "post-fix",
-                        "hypothesisId": "H6",
-                        "location": "core/generation.py:generate_refactored_code:per_file",
-                        "message": "Per-file refactor assembled",
-                        "data": {
-                            "total_input_chars": total_input,
-                            "assembled_chars": len(per_file_cleaned),
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
             if len(per_file_cleaned) >= len(cleaned):
                 cleaned = per_file_cleaned
 
